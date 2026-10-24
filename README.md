@@ -6,8 +6,10 @@ not run AI models, orchestrate engineering tasks, or provide a CLI.
 
 ## Current implementation status
 
-The initial TypeScript implementation is present, but it is **not yet buildable
-or verified**. Do not treat the listed operations as production-ready.
+The initial TypeScript implementation is present and the package builds. Basic
+repository creation, reopening, persistence, and duplicate protection have
+tests. The broader operations are not yet fully verified; do not treat them as
+production-ready.
 
 The current source is organized as follows:
 
@@ -36,27 +38,24 @@ npm test
 
 Last checked on 2026-10-23:
 
-- `npm run build` fails with five TypeScript errors: `Commit`, `Branch`, and
-  `Snapshot` values are passed to a storage method typed to accept `JsonObject`.
-- `npm test` exits with code 1 because no test files exist yet.
+- `npm run build` passes.
+- `npm test` passes: 1 test file, 3 tests.
 
-Until these blockers are fixed and tests are added, the engine is a prototype,
-not a verified reference implementation.
+The Engine remains an early prototype. Its build and basic repository
+operations are verified, but branch/history semantics, full validation,
+restore, and storage security still need focused tests.
 
 ## Next engineering steps
 
-1. Fix the storage write type without weakening type safety; run the build.
-2. Add temporary-directory tests for repository creation/opening and YAML
-   round-tripping.
-3. Test immutable object writes, path traversal rejection, and symlink
+1. Test immutable object writes, path traversal rejection, and symlink
    protection.
-4. Add validation tests for malformed objects, duplicate identifiers, broken
+2. Add validation tests for malformed objects, duplicate identifiers, broken
    references, branch heads, snapshots, and graph edges.
-5. Test commit/branch history and restore semantics, including that restore
+3. Test commit/branch history and restore semantics, including that restore
    creates a new Snapshot and Commit rather than mutating history.
-6. Compare all behavior with the current RFCs and document any specification
+4. Compare all behavior with the current RFCs and document any specification
    ambiguity instead of guessing.
-7. Only after the Engine API and tests are stable, implement the separate
+5. Only after the Engine API and tests are stable, implement the separate
    `aispec-cli` on top of the public Engine API.
 
 ## Scope
