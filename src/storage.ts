@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import {
   existsSync,
+  linkSync,
   lstatSync,
   mkdirSync,
   readFileSync,
@@ -8,6 +9,7 @@ import {
   realpathSync,
   renameSync,
   rmSync,
+  unlinkSync,
   writeFileSync,
 } from "node:fs";
 import path from "node:path";
@@ -87,7 +89,12 @@ export class RepositoryStorage {
       if (!replace && existsSync(absolute)) {
         throw new Error(`Refusing to overwrite immutable object: ${relativePath}`);
       }
-      renameSync(temporary, absolute);
+      if (replace) {
+        renameSync(temporary, absolute);
+      } else {
+        linkSync(temporary, absolute);
+        unlinkSync(temporary);
+      }
     } catch (error) {
       rmSync(temporary, { force: true });
       throw error;
