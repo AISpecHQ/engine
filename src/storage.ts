@@ -1,9 +1,12 @@
 import { createHash, randomUUID } from "node:crypto";
 import {
+  closeSync,
+  fsyncSync,
   existsSync,
   linkSync,
   lstatSync,
   mkdirSync,
+  openSync,
   readFileSync,
   readdirSync,
   realpathSync,
@@ -128,6 +131,40 @@ export class RepositoryStorage {
     const absolute = this.resolve(relativePath);
     this.assertNoSymlink(absolute);
     if (existsSync(absolute)) unlinkSync(absolute);
+  }
+
+  synchronize(): void {
+    const canonicalFiles = [
+      "aispec.yaml",
+      ...DATA_DIRECTORIES.flatMap((directory) => this.list(directory)),
+    ].sort();
+
+    for (const relativePath of canonicalFiles) {
+      const absolute = this.resolve(relativePath);
+      this.assertNoSymlink(absolute);
+      const descriptor = openSync(absolute, "r+");
+      let syncFailed = false;
+      let syncError: unknown;
+      try {
+        fsyncSync(descriptor);
+      } catch (error) {
+        syncFailed = true;
+        syncError = error;
+      }
+
+      try {
+        closeSync(descriptor);
+      } catch (closeError) {
+        if (syncFailed) {
+          throw new AggregateError(
+            [syncError, closeError],
+            `Failed to synchronize and close ${relativePath}`,
+          );
+        }
+        throw closeError;
+      }
+      if (syncFailed) throw syncError;
+    }
   }
 
   list(directory: string): string[] {

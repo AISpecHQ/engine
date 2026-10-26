@@ -9,6 +9,7 @@ vi.mock("node:fs", async (importOriginal) => {
   const actual = await importOriginal<typeof import("node:fs")>();
   return {
     ...actual,
+    fsyncSync: vi.fn(actual.fsyncSync),
     unlinkSync: vi.fn(actual.unlinkSync),
   };
 });
@@ -30,6 +31,40 @@ describe("RepositoryStorage", () => {
       expect(await readFile(path.join(root, "nodes", "example.yaml"), "utf8"))
         .toContain("value: 1");
     } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("synchronizes canonical file contents and propagates synchronization failures", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "aispec-storage-"));
+    const originalError = new Error("Simulated synchronization failure");
+    const synchronizeFile = vi.mocked(fs.fsyncSync);
+    const originalSynchronize = synchronizeFile.getMockImplementation()!;
+    try {
+      const storage = RepositoryStorage.initialize(root);
+      storage.write("aispec.yaml", { id: "repository" });
+      storage.write("nodes/example.yaml", { id: "example" });
+      const manifestBefore = fs.readFileSync(path.join(root, "aispec.yaml"), "utf8");
+      const nodeBefore = fs.readFileSync(path.join(root, "nodes", "example.yaml"), "utf8");
+
+      synchronizeFile.mockClear();
+      storage.synchronize();
+      expect(synchronizeFile).toHaveBeenCalledTimes(2);
+      expect(fs.readFileSync(path.join(root, "aispec.yaml"), "utf8")).toBe(manifestBefore);
+      expect(fs.readFileSync(path.join(root, "nodes", "example.yaml"), "utf8")).toBe(nodeBefore);
+
+      synchronizeFile.mockImplementation(() => {
+        throw originalError;
+      });
+      let observedError: unknown;
+      try {
+        storage.synchronize();
+      } catch (error) {
+        observedError = error;
+      }
+      expect(observedError).toBe(originalError);
+    } finally {
+      synchronizeFile.mockImplementation(originalSynchronize);
       await rm(root, { recursive: true, force: true });
     }
   });

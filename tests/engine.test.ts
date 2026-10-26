@@ -35,6 +35,38 @@ describe("AISpecEngine repository foundation", () => {
     }
   });
 
+  it("saves idempotently and preserves repository state across reopening", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "aispec-engine-"));
+    try {
+      const engine = AISpecEngine.create(root, { name: "Save Repository Test" });
+      const node = engine.addNode({ id: "saved-node" });
+      const snapshot = engine.createSnapshot({
+        nodeId: node.id,
+        configuration: { persisted: true },
+      });
+      const commit = engine.createCommit({
+        message: "Save repository test",
+        author: "Test",
+        snapshotIds: [snapshot.id],
+      });
+      const manifestBefore = await readFile(path.join(root, "aispec.yaml"), "utf8");
+
+      expect(engine.saveRepository()).toBeUndefined();
+      expect(engine.saveRepository()).toBeUndefined();
+      expect(await readFile(path.join(root, "aispec.yaml"), "utf8")).toBe(manifestBefore);
+
+      const reopened = AISpecEngine.open(root);
+      expect(reopened.getNode(node.id)).toEqual(node);
+      expect(reopened.getSnapshot(snapshot.id)).toEqual(snapshot);
+      expect(reopened.getCommit(commit.id)).toEqual(commit);
+      expect(reopened.getStateAtCommit(commit.id).get(node.id)).toEqual(snapshot);
+      expect(reopened.getBranch("main")?.head).toBe(commit.id);
+      expect(reopened.validate().valid).toBe(true);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   it.each(["aispec.yaml", "commits/", "branches/"])(
     "cleans up only its own files and allows retry after %s initialization failure",
     async (failedPath) => {

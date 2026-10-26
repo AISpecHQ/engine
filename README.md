@@ -26,6 +26,12 @@ and RFCs, especially RFC-0001 (layout), RFC-0002 (commits), RFC-0003
 RFC-0009 (storage). These documents are normative; implementation behavior
 must not silently replace or extend their requirements.
 
+`saveRepository()` is an explicit synchronization barrier. It flushes the
+contents of the manifest and canonical repository object files through the
+operating system, without changing repository contents. It is idempotent, but
+does not provide atomic multi-file persistence or guarantee directory-entry
+metadata durability; see RFC-0010 and RFC-0009.
+
 ## Reproducible checks
 
 Run from this repository:

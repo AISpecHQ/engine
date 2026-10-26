@@ -102,6 +102,10 @@ export class AISpecEngine {
     return this.storage.read<RepositoryManifest>("aispec.yaml");
   }
 
+  saveRepository(): void {
+    this.storage.synchronize();
+  }
+
   validate(): ValidationResult {
     return validateRepository(this.storage);
   }
