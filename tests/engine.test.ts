@@ -67,6 +67,49 @@ describe("AISpecEngine repository foundation", () => {
     }
   });
 
+  it("saves merged and restored history without losing branch state", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "aispec-engine-"));
+    try {
+      const engine = AISpecEngine.create(root, { name: "Save Merged History Test" });
+      const node = engine.addNode({ id: "merged-history-node" });
+      const snapshot = engine.createSnapshot({
+        nodeId: node.id,
+        configuration: { original: true },
+      });
+      const mainCommit = engine.createCommit({
+        message: "Create original state",
+        author: "Test",
+        snapshotIds: [snapshot.id],
+      });
+      const feature = engine.createBranch({ name: "feature", author: "Test" });
+      const featureCommit = engine.createCommit({
+        branch: feature.name,
+        message: "Feature commit",
+        author: "Test",
+      });
+      const mergeCommit = engine.mergeBranches("feature", "main", "Test", "Merge feature");
+      const restored = engine.restoreSnapshot(snapshot.id, {
+        author: "Test",
+        message: "Restore original state",
+      });
+
+      engine.saveRepository();
+
+      const reopened = AISpecEngine.open(root);
+      expect(reopened.getBranch("feature")?.head).toBe(featureCommit.id);
+      expect(reopened.getBranch("main")?.head).toBe(restored.commit.id);
+      expect(reopened.getCommit(mergeCommit.id)?.parents).toEqual([
+        mainCommit.id,
+        featureCommit.id,
+      ]);
+      expect(reopened.getStateAtCommit(restored.commit.id).get(node.id))
+        .toEqual(restored.snapshot);
+      expect(reopened.validate().valid).toBe(true);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   it.each(["aispec.yaml", "commits/", "branches/"])(
     "cleans up only its own files and allows retry after %s initialization failure",
     async (failedPath) => {
