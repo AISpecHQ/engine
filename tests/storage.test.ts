@@ -25,6 +25,25 @@ describe("RepositoryStorage", () => {
     }
   });
 
+  it("round-trips JSON documents when using a JSON file extension", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "aispec-storage-"));
+    try {
+      const storage = RepositoryStorage.initialize(root);
+      const document = {
+        id: "json-object",
+        nested: { enabled: true, values: [1, "two"] },
+      };
+
+      storage.write("nodes/json-object.json", document);
+
+      expect(storage.read("nodes/json-object.json")).toEqual(document);
+      expect(await readFile(path.join(root, "nodes", "json-object.json"), "utf8"))
+        .toBe(`${JSON.stringify(document, null, 2)}\n`);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   it.each([
     "../outside.yaml",
     "nodes/../../outside.yaml",

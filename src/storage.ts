@@ -84,7 +84,10 @@ export class RepositoryStorage {
 
     const temporary = `${absolute}.${randomUUID()}.tmp`;
     try {
-      writeFileSync(temporary, stringify(value), { encoding: "utf8", flag: "wx" });
+      const serialized = path.extname(absolute).toLowerCase() === ".json"
+        ? `${JSON.stringify(value, null, 2)}\n`
+        : stringify(value);
+      writeFileSync(temporary, serialized, { encoding: "utf8", flag: "wx" });
       this.assertNoSymlink(absolute);
       if (!replace && existsSync(absolute)) {
         throw new Error(`Refusing to overwrite immutable object: ${relativePath}`);
