@@ -1,8 +1,9 @@
-import { mkdtemp, readdir, rm } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { AISpecEngine } from "../src/engine.js";
+import { RepositoryStorage } from "../src/storage.js";
 
 describe("AISpecEngine repository foundation", () => {
   it("creates and reopens a repository with its canonical layout", async () => {
@@ -31,6 +32,63 @@ describe("AISpecEngine repository foundation", () => {
       }
     } finally {
       await rm(parent, { recursive: true, force: true });
+    }
+  });
+
+  it.each(["aispec.yaml", "commits/", "branches/"])(
+    "cleans up only its own files and allows retry after %s initialization failure",
+    async (failedPath) => {
+      const root = await mkdtemp(path.join(tmpdir(), "aispec-engine-"));
+      const preservedPath = path.join(root, "user-data.txt");
+      const originalWrite = RepositoryStorage.prototype.write;
+      try {
+        await writeFile(preservedPath, "preserve this file");
+        vi.spyOn(RepositoryStorage.prototype, "write").mockImplementation(
+          function (relativePath, value, replace) {
+            const normalizedPath = relativePath.replaceAll("\\", "/");
+            if (
+              (failedPath === "aispec.yaml" && normalizedPath === failedPath) ||
+              (failedPath !== "aispec.yaml" && normalizedPath.startsWith(failedPath))
+            ) {
+              throw new Error(`Simulated ${failedPath} write failure`);
+            }
+            return originalWrite.call(this, relativePath, value, replace);
+          },
+        );
+
+        expect(() => AISpecEngine.create(root, { name: "Failed initialization" }))
+          .toThrow(`Simulated ${failedPath} write failure`);
+        vi.restoreAllMocks();
+
+        expect(await readFile(preservedPath, "utf8")).toBe("preserve this file");
+        expect(await readdir(path.join(root, "commits"))).toEqual([]);
+        expect(await readdir(path.join(root, "branches"))).toEqual([]);
+        await expect(readFile(path.join(root, "aispec.yaml"))).rejects.toMatchObject({
+          code: "ENOENT",
+        });
+
+        const engine = AISpecEngine.create(root, { name: "Successful retry" });
+        expect(engine.manifest.name).toBe("Successful retry");
+        expect(engine.validate().valid).toBe(true);
+        expect(await readFile(preservedPath, "utf8")).toBe("preserve this file");
+      } finally {
+        vi.restoreAllMocks();
+        await rm(root, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it("does not modify an existing manifest when repository creation is rejected", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "aispec-engine-"));
+    const manifestPath = path.join(root, "aispec.yaml");
+    try {
+      await writeFile(manifestPath, "existing repository data");
+
+      expect(() => AISpecEngine.create(root, { name: "Replacement" }))
+        .toThrow("AISpec repository already exists");
+      expect(await readFile(manifestPath, "utf8")).toBe("existing repository data");
+    } finally {
+      await rm(root, { recursive: true, force: true });
     }
   });
 

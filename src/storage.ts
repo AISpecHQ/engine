@@ -104,6 +104,12 @@ export class RepositoryStorage {
     }
   }
 
+  remove(relativePath: string): void {
+    const absolute = this.resolve(relativePath);
+    this.assertNoSymlink(absolute);
+    if (existsSync(absolute)) unlinkSync(absolute);
+  }
+
   list(directory: string): string[] {
     const absolute = this.resolve(directory);
     this.assertNoSymlink(absolute);

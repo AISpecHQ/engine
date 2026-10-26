@@ -27,38 +27,63 @@ export class AISpecEngine {
     }
 
     const storage = RepositoryStorage.initialize(root);
-    const manifest: RepositoryManifest = {
-      id: `p_${randomUUID()}`,
-      name: options.name,
-      aispec: { version: options.version ?? "0.1.0" },
+    const createdFiles: string[] = [];
+    const writeInitialFile = (relativePath: string, value: object): void => {
+      storage.write(relativePath, value);
+      createdFiles.push(relativePath);
     };
-    storage.write("aispec.yaml", manifest);
 
-    const now = new Date().toISOString();
-    const initialCommit: Commit = {
-      id: `c_${randomUUID()}`,
-      parents: [],
-      branch: "main",
-      author: options.author ?? "system",
-      timestamp: now,
-      message: "Initial commit",
-      snapshotIds: [],
-      tags: [],
-      metadata: {},
-    };
-    storage.write(storage.pathFor("commits", initialCommit.id), initialCommit);
+    try {
+      const manifest: RepositoryManifest = {
+        id: `p_${randomUUID()}`,
+        name: options.name,
+        aispec: { version: options.version ?? "0.1.0" },
+      };
+      writeInitialFile("aispec.yaml", manifest);
 
-    const main: Branch = {
-      id: `b_${randomUUID()}`,
-      name: "main",
-      head: initialCommit.id,
-      createdAt: now,
-      author: options.author ?? "system",
-      tags: [],
-      metadata: {},
-    };
-    storage.write(storage.pathFor("branches", main.id), main);
-    return new AISpecEngine(storage);
+      const now = new Date().toISOString();
+      const initialCommit: Commit = {
+        id: `c_${randomUUID()}`,
+        parents: [],
+        branch: "main",
+        author: options.author ?? "system",
+        timestamp: now,
+        message: "Initial commit",
+        snapshotIds: [],
+        tags: [],
+        metadata: {},
+      };
+      const commitPath = storage.pathFor("commits", initialCommit.id);
+      writeInitialFile(commitPath, initialCommit);
+
+      const main: Branch = {
+        id: `b_${randomUUID()}`,
+        name: "main",
+        head: initialCommit.id,
+        createdAt: now,
+        author: options.author ?? "system",
+        tags: [],
+        metadata: {},
+      };
+      writeInitialFile(storage.pathFor("branches", main.id), main);
+      return new AISpecEngine(storage);
+    } catch (error) {
+      const cleanupErrors: unknown[] = [];
+      for (const relativePath of createdFiles.reverse()) {
+        try {
+          storage.remove(relativePath);
+        } catch (cleanupError) {
+          cleanupErrors.push(cleanupError);
+        }
+      }
+      if (cleanupErrors.length > 0) {
+        throw new AggregateError(
+          [error, ...cleanupErrors],
+          "Repository initialization failed and rollback was incomplete",
+        );
+      }
+      throw error;
+    }
   }
 
   static open(root: string): AISpecEngine {
