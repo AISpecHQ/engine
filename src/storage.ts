@@ -83,6 +83,7 @@ export class RepositoryStorage {
     }
 
     const temporary = `${absolute}.${randomUUID()}.tmp`;
+    let targetCreated = false;
     try {
       const serialized = path.extname(absolute).toLowerCase() === ".json"
         ? `${JSON.stringify(value, null, 2)}\n`
@@ -96,10 +97,29 @@ export class RepositoryStorage {
         renameSync(temporary, absolute);
       } else {
         linkSync(temporary, absolute);
+        targetCreated = true;
         unlinkSync(temporary);
       }
     } catch (error) {
-      rmSync(temporary, { force: true });
+      const cleanupErrors: unknown[] = [];
+      try {
+        rmSync(temporary, { force: true });
+      } catch (cleanupError) {
+        cleanupErrors.push(cleanupError);
+      }
+      if (targetCreated) {
+        try {
+          rmSync(absolute, { force: true });
+        } catch (cleanupError) {
+          cleanupErrors.push(cleanupError);
+        }
+      }
+      if (cleanupErrors.length > 0) {
+        throw new AggregateError(
+          [error, ...cleanupErrors],
+          `Failed to write ${relativePath} and clean up temporary files`,
+        );
+      }
       throw error;
     }
   }

@@ -1,8 +1,17 @@
 import { mkdtemp, readFile, rm } from "node:fs/promises";
+import * as fs from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { RepositoryStorage } from "../src/storage.js";
+
+vi.mock("node:fs", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:fs")>();
+  return {
+    ...actual,
+    unlinkSync: vi.fn(actual.unlinkSync),
+  };
+});
 
 describe("RepositoryStorage", () => {
   it("writes immutable documents without replacing an existing object", async () => {
@@ -21,6 +30,52 @@ describe("RepositoryStorage", () => {
       expect(await readFile(path.join(root, "nodes", "example.yaml"), "utf8"))
         .toContain("value: 1");
     } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("removes a newly linked destination when temporary-file cleanup fails", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "aispec-storage-"));
+    const targetPath = path.join(root, "nodes", "new-object.yaml");
+    const originalError = new Error("Simulated temporary-file cleanup failure");
+    let targetExistedAtFailure = false;
+    try {
+      const storage = RepositoryStorage.initialize(root);
+      storage.write("nodes/existing.yaml", { id: "existing", value: "preserve" });
+      const unlink = vi.mocked(fs.unlinkSync);
+      const originalUnlink = unlink.getMockImplementation()!;
+      unlink.mockImplementation((filePath) => {
+        const candidatePath = String(filePath);
+        if (candidatePath.startsWith(`${targetPath}.`) && candidatePath.endsWith(".tmp")) {
+          targetExistedAtFailure = fs.existsSync(targetPath);
+          throw originalError;
+        }
+        return originalUnlink(filePath);
+      });
+
+      try {
+        const write = (): void => {
+          try {
+            storage.write("nodes/new-object.yaml", { id: "new-object" });
+          } catch (error) {
+            expect(error).toBe(originalError);
+            throw error;
+          }
+        };
+        expect(write).toThrow(originalError);
+      } finally {
+        unlink.mockImplementation(originalUnlink);
+      }
+
+      expect(targetExistedAtFailure).toBe(true);
+      expect(fs.existsSync(targetPath)).toBe(false);
+      expect(storage.read("nodes/existing.yaml")).toEqual({
+        id: "existing",
+        value: "preserve",
+      });
+      expect(storage.list("nodes")).toEqual([path.join("nodes", "existing.yaml")]);
+    } finally {
+      vi.restoreAllMocks();
       await rm(root, { recursive: true, force: true });
     }
   });
