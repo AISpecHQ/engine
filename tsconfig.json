@@ -9,8 +9,11 @@
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
-    "types": ["node"]
+    "types": ["node"],
+    "paths": {
+      "@aispechq/engine": ["./src/index.ts"]
+    }
   },
-  "include": ["src/**/*.ts"],
+  "include": ["src/**/*.ts", "cli/**/*.ts"],
   "exclude": ["node_modules", "dist", "tests"]
 }
