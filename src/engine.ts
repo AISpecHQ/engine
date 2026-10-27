@@ -1,8 +1,11 @@
 import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync } from "node:fs";
 import path from "node:path";
-import { RepositoryStorage } from "./storage.js";
-import { validateRepository } from "./validation.js";
+import { RepositoryStorage, removeDuringRollback } from "./storage.js";
+import {
+  validateObject as validateRepositoryObject,
+  validateRepository,
+} from "./validation.js";
 import type {
   AISpecNode,
   Branch,
@@ -16,6 +19,16 @@ import type {
   Snapshot,
   ValidationResult,
 } from "./types.js";
+
+const IDENTITY_DIRECTORIES = [
+  "nodes",
+  "snapshots",
+  "commits",
+  "branches",
+  "connectors",
+  "artifacts",
+  "extensions",
+] as const;
 
 export class AISpecEngine {
   private constructor(private readonly storage: RepositoryStorage) {}
@@ -71,7 +84,7 @@ export class AISpecEngine {
       const cleanupErrors: unknown[] = [];
       for (const relativePath of createdFiles.reverse()) {
         try {
-          storage.remove(relativePath);
+          removeDuringRollback(storage, relativePath);
         } catch (cleanupError) {
           cleanupErrors.push(cleanupError);
         }
@@ -110,11 +123,15 @@ export class AISpecEngine {
     return validateRepository(this.storage);
   }
 
+  validateObject(objectType: string, value: unknown): ValidationResult {
+    return validateRepositoryObject(this.storage, objectType, value);
+  }
+
   addNode(node: AISpecNode): AISpecNode {
     if (!node || typeof node.id !== "string" || !node.id.trim()) {
       throw new Error("Node id is required");
     }
-    if (this.getNode(node.id)) throw new Error(`Node already exists: ${node.id}`);
+    this.assertUniqueObjectId(node.id);
     this.storage.write(this.storage.pathFor("nodes", node.id), node);
     return node;
   }
@@ -129,6 +146,16 @@ export class AISpecEngine {
 
   createSnapshot(input: CreateSnapshotInput): Snapshot {
     if (!this.getNode(input.nodeId)) throw new Error(`Node not found: ${input.nodeId}`);
+    for (const connectorId of input.connectors ?? []) {
+      if (!this.hasStoredId("connectors", connectorId)) {
+        throw new Error(`Connector not found: ${connectorId}`);
+      }
+    }
+    for (const artifactId of input.artifacts ?? []) {
+      if (!this.hasStoredId("artifacts", artifactId)) {
+        throw new Error(`Artifact not found: ${artifactId}`);
+      }
+    }
     const existing = this.readAll<Snapshot>("snapshots")
       .filter((snapshot) => snapshot.nodeId === input.nodeId);
     const nextVersion = Math.max(0, ...existing.map((snapshot) => snapshot.version)) + 1;
@@ -165,7 +192,8 @@ export class AISpecEngine {
   }
 
   getBranch(name: string): Branch | undefined {
-    return this.readAll<Branch>("branches").find((branch) => branch.name === name);
+    return this.readAll<Branch>("branches")
+      .find((branch) => branch.name === name || branch.id === name);
   }
 
   listBranches(): Branch[] {
@@ -178,15 +206,18 @@ export class AISpecEngine {
     }
     if (this.getBranch(input.name)) throw new Error(`Branch already exists: ${input.name}`);
 
-    const source = input.from
-      ? this.getBranch(input.from) ?? this.getCommit(input.from)
+    const sourceBranch = input.from
+      ? this.getBranch(input.from)
       : this.getBranch("main");
+    const source = sourceBranch ?? (input.from ? this.getCommit(input.from) : undefined);
     if (!source) throw new Error(`Branch or commit not found: ${input.from ?? "main"}`);
     const head = "head" in source ? source.head : source.id;
+    const parentName = sourceBranch?.name ??
+      ("branch" in source ? this.getBranch(source.branch)?.name : undefined);
     const branch: Branch = {
       id: `b_${randomUUID()}`,
       name: input.name,
-      ...(input.from && this.getBranch(input.from) ? { parent: input.from } : {}),
+      ...(parentName ? { parent: parentName } : {}),
       head,
       createdAt: new Date().toISOString(),
       author: input.author,
@@ -215,7 +246,7 @@ export class AISpecEngine {
     const branch = this.getBranch(branchName);
     if (!branch) throw new Error(`Branch not found: ${branchName}`);
     const parents = input.parents ?? [branch.head];
-    if (parents.length === 1 && parents[0] !== branch.head) {
+    if (!parents.includes(branch.head)) {
       throw new Error("A commit must include the current branch head as its parent");
     }
     if (new Set(parents).size !== parents.length) throw new Error("Commit parents must be unique");
@@ -238,12 +269,25 @@ export class AISpecEngine {
       tags: input.tags ?? [],
       metadata: input.metadata ?? {},
     };
-    this.storage.write(this.storage.pathFor("commits", commit.id), commit);
-    this.storage.write(
-      this.storage.pathFor("branches", branch.id),
-      { ...branch, head: commit.id },
-      true,
-    );
+    const commitPath = this.storage.pathFor("commits", commit.id);
+    this.storage.write(commitPath, commit);
+    try {
+      this.storage.write(
+        this.storage.pathFor("branches", branch.id),
+        { ...branch, head: commit.id },
+        true,
+      );
+    } catch (cause) {
+      try {
+        removeDuringRollback(this.storage, commitPath);
+      } catch (rollbackCause) {
+        throw new AggregateError(
+          [cause, rollbackCause],
+          `Failed to advance branch ${branchName} and remove incomplete commit ${commit.id}`,
+        );
+      }
+      throw cause;
+    }
     return commit;
   }
 
@@ -261,22 +305,58 @@ export class AISpecEngine {
   }
 
   getStateAtCommit(commitId: string): Map<string, Snapshot> {
-    if (!this.getCommit(commitId)) throw new Error(`Commit not found: ${commitId}`);
-    const state = new Map<string, Snapshot>();
-    const visited = new Set<string>();
-    const visit = (id: string): void => {
-      if (visited.has(id)) return;
-      visited.add(id);
-      const commit = this.getCommit(id);
-      if (!commit) return;
-      for (const snapshotId of commit.snapshotIds) {
-        const snapshot = this.getSnapshot(snapshotId);
-        if (snapshot && !state.has(snapshot.nodeId)) state.set(snapshot.nodeId, snapshot);
+    const states = new Map<string, Map<string, Snapshot>>();
+    const readCommit = (id: string): Commit => {
+      let commit: Commit | undefined;
+      try {
+        commit = this.getCommit(id);
+      } catch (cause) {
+        throw new Error(
+          `Failed to read commit ${id} while reconstructing repository state: ${
+            cause instanceof Error ? cause.message : String(cause)
+          }`,
+          { cause },
+        );
       }
-      for (const parent of commit.parents) visit(parent);
+      if (!commit) throw new Error(`Commit not found: ${id}`);
+      return commit;
     };
-    visit(commitId);
-    return state;
+    const readSnapshot = (id: string): Snapshot => {
+      let snapshot: Snapshot | undefined;
+      try {
+        snapshot = this.getSnapshot(id);
+      } catch (cause) {
+        throw new Error(
+          `Failed to read snapshot ${id} while reconstructing repository state: ${
+            cause instanceof Error ? cause.message : String(cause)
+          }`,
+          { cause },
+        );
+      }
+      if (!snapshot) throw new Error(`Snapshot not found: ${id}`);
+      return snapshot;
+    };
+    const stateAt = (id: string, active = new Set<string>()): Map<string, Snapshot> => {
+      const cached = states.get(id);
+      if (cached) return new Map(cached);
+      if (active.has(id)) throw new Error(`Commit history cycle detected: ${id}`);
+
+      const commit = readCommit(id);
+      const nextActive = new Set(active).add(id);
+      const state = new Map<string, Snapshot>();
+      for (const parent of commit.parents) {
+        for (const [nodeId, snapshot] of stateAt(parent, nextActive)) {
+          if (!state.has(nodeId)) state.set(nodeId, snapshot);
+        }
+      }
+      for (const snapshotId of commit.snapshotIds) {
+        const snapshot = readSnapshot(snapshotId);
+        state.set(snapshot.nodeId, snapshot);
+      }
+      states.set(id, state);
+      return new Map(state);
+    };
+    return stateAt(commitId);
   }
 
   restoreSnapshot(
@@ -293,21 +373,40 @@ export class AISpecEngine {
       artifacts: [...previous.artifacts],
       metadata: structuredClone(previous.metadata),
     });
-    const commit = this.createCommit({
-      branch: options.branch,
-      author: options.author,
-      message: options.message ?? `Restore ${snapshotId}`,
-      snapshotIds: [snapshot.id],
-    });
-    return { snapshot, commit };
+    try {
+      const commit = this.createCommit({
+        branch: options.branch,
+        author: options.author,
+        message: options.message ?? `Restore ${snapshotId}`,
+        snapshotIds: [snapshot.id],
+      });
+      return { snapshot, commit };
+    } catch (cause) {
+      try {
+        removeDuringRollback(
+          this.storage,
+          this.storage.pathFor("snapshots", snapshot.id),
+        );
+      } catch (rollbackCause) {
+        throw new AggregateError(
+          [cause, rollbackCause],
+          `Failed to restore snapshot ${snapshotId} and remove incomplete snapshot ${snapshot.id}`,
+        );
+      }
+      throw cause;
+    }
   }
 
   getChildren(nodeId: string): AISpecNode[] {
-    return this.listNodes()
-      .filter((node) => node.edges?.some((edge) => edge.source === nodeId))
-      .map((node) => this.getNode(
-        node.edges!.find((edge) => edge.source === nodeId)!.target,
-      ))
+    const childIds = new Set(
+      this.listNodes().flatMap((node) =>
+        (node.edges ?? [])
+          .filter((edge) => edge.source === nodeId)
+          .map((edge) => edge.target),
+      ),
+    );
+    return [...childIds]
+      .map((id) => this.getNode(id))
       .filter((node): node is AISpecNode => Boolean(node))
       .sort((a, b) => a.id.localeCompare(b.id));
   }
@@ -339,8 +438,55 @@ export class AISpecEngine {
   }
 
   private findById<T extends { id: string }>(directory: string, id: string): T | undefined {
-    const file = this.storage.pathFor(directory, id);
-    return this.storage.exists(file) ? this.storage.read<T>(file) : undefined;
+    let result: T | undefined;
+    for (const file of this.storage.list(directory)) {
+      const object = this.storage.read<T>(file);
+      if (object.id !== id) continue;
+      if (result) throw new Error(`Duplicate ${directory} object id: ${id}`);
+      result = object;
+    }
+    return result;
+  }
+
+  private assertUniqueObjectId(id: string): void {
+    for (const directory of IDENTITY_DIRECTORIES) {
+      let files: string[];
+      try {
+        files = this.storage.list(directory);
+      } catch (cause) {
+        const detail = cause instanceof Error ? cause.message : String(cause);
+        throw new Error(
+          `Cannot verify unique ID ${id}; could not list ${directory}: ${detail}`,
+          { cause },
+        );
+      }
+      for (const file of files) {
+        let object: unknown;
+        try {
+          object = this.storage.read(file);
+        } catch (cause) {
+          const detail = cause instanceof Error ? cause.message : String(cause);
+          throw new Error(
+            `Cannot verify unique ID ${id}; could not inspect ${directory} object ${file}: ${detail}`,
+            { cause },
+          );
+        }
+        if (!isRecord(object) || typeof object.id !== "string" || !object.id.trim()) {
+          throw new Error(
+            `Cannot verify unique ID ${id}; ${directory} object ${file} has no valid ID`,
+          );
+        }
+        if (object.id === id) {
+          if (directory === "nodes") throw new Error(`Node already exists: ${id}`);
+          throw new Error(`Object ID is already used in ${directory}: ${id}`);
+        }
+      }
+    }
+  }
+
+  private hasStoredId(directory: "connectors" | "artifacts", id: string): boolean {
+    return this.readAll<Record<string, unknown>>(directory)
+      .some((object) => object.id === id);
   }
 }
 

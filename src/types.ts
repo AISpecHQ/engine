@@ -1,8 +1,8 @@
 export type JsonObject = Record<string, unknown>;
 
 export interface RepositoryManifest {
-  id: string;
-  name: string;
+  id?: string;
+  name?: string;
   aispec: { version: string };
   metadata?: JsonObject;
 }
@@ -28,7 +28,7 @@ export interface Snapshot {
   capabilities: string[];
   connectors: string[];
   artifacts: string[];
-  metadata: JsonObject;
+  metadata?: JsonObject;
 }
 
 export interface Commit {
@@ -39,8 +39,8 @@ export interface Commit {
   timestamp: string;
   message: string;
   snapshotIds: string[];
-  tags: string[];
-  metadata: JsonObject;
+  tags?: string[];
+  metadata?: JsonObject;
 }
 
 export interface Branch {
@@ -51,8 +51,15 @@ export interface Branch {
   createdAt: string;
   author: string;
   description?: string;
-  tags: string[];
-  metadata: JsonObject;
+  tags?: string[];
+  metadata?: JsonObject;
+}
+
+export interface AISpecExtension extends JsonObject {
+  id: string;
+  namespace: string;
+  version: string;
+  requires: { aispec: string };
 }
 
 export interface ValidationIssue {
@@ -66,6 +73,8 @@ export interface ValidationResult {
   valid: boolean;
   issues: ValidationIssue[];
 }
+
+export type AISpecObjectType = "node" | "snapshot" | "commit" | "branch" | "extension";
 
 export interface CreateRepositoryOptions {
   name: string;

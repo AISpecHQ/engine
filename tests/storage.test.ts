@@ -35,6 +35,89 @@ describe("RepositoryStorage", () => {
     }
   });
 
+  it.each(["commits", "snapshots"] as const)(
+    "does not replace an existing %s object even when replace is true",
+    async (directory) => {
+      const root = await mkdtemp(path.join(tmpdir(), "aispec-storage-"));
+      try {
+        const storage = RepositoryStorage.initialize(root);
+        const objectPath = storage.pathFor(directory, `${directory}-id`);
+        const original = { id: `${directory}-id`, revision: 1 };
+        storage.write(objectPath, original);
+
+        expect(() =>
+          storage.write(objectPath, { ...original, revision: 2 }, true),
+        ).toThrow(`Refusing to replace immutable history object: ${objectPath}`);
+        expect(storage.read(objectPath)).toEqual(original);
+      } finally {
+        await rm(root, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it.each(["commits", "snapshots"] as const)(
+    "does not remove an existing %s object",
+    async (directory) => {
+      const root = await mkdtemp(path.join(tmpdir(), "aispec-storage-"));
+      try {
+        const storage = RepositoryStorage.initialize(root);
+        const objectPath = storage.pathFor(directory, `${directory}-id`);
+        const original = { id: `${directory}-id` };
+        storage.write(objectPath, original);
+
+        expect(() => storage.remove(objectPath))
+          .toThrow(`Refusing to remove immutable history object: ${objectPath}`);
+        expect(storage.read(objectPath)).toEqual(original);
+      } finally {
+        await rm(root, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it("protects history objects through normalized path aliases", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "aispec-storage-"));
+    try {
+      const storage = RepositoryStorage.initialize(root);
+      const objectPath = storage.pathFor("commits", "commit-alias");
+      const filename = path.basename(objectPath);
+      const aliases = [
+        `commits${path.sep}..${path.sep}commits${path.sep}${filename}`,
+      ];
+      if (process.platform === "win32") {
+        aliases.push(`COMMITS${path.sep}${filename}`);
+      }
+      storage.write(objectPath, { id: "commit-alias" });
+
+      for (const alias of aliases) {
+        expect(() => storage.write(alias, { id: "changed" }, true))
+          .toThrow("Refusing to replace immutable history object");
+        expect(() => storage.remove(alias))
+          .toThrow("Refusing to remove immutable history object");
+      }
+      expect(storage.read(objectPath)).toEqual({ id: "commit-alias" });
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("continues to allow replacing a Branch object", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "aispec-storage-"));
+    try {
+      const storage = RepositoryStorage.initialize(root);
+      const branchPath = storage.pathFor("branches", "branch-id");
+      storage.write(branchPath, { id: "branch-id", head: "old-head" });
+
+      storage.write(branchPath, { id: "branch-id", head: "new-head" }, true);
+
+      expect(storage.read(branchPath)).toEqual({
+        id: "branch-id",
+        head: "new-head",
+      });
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   it("synchronizes canonical file contents and propagates synchronization failures", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "aispec-storage-"));
     const originalError = new Error("Simulated synchronization failure");

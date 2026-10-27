@@ -32,11 +32,23 @@ const DATA_DIRECTORIES = [
   "extensions",
 ] as const;
 
+const internalRemovers = new WeakMap<RepositoryStorage, (relativePath: string) => void>();
+
+export function removeDuringRollback(
+  storage: RepositoryStorage,
+  relativePath: string,
+): void {
+  const remove = internalRemovers.get(storage);
+  if (!remove) throw new Error("Repository storage is not initialized");
+  remove(relativePath);
+}
+
 export class RepositoryStorage {
   readonly root: string;
 
   constructor(root: string) {
     this.root = realpathSync(root);
+    internalRemovers.set(this, (relativePath) => this.#remove(relativePath, true));
   }
 
   static initialize(root: string): RepositoryStorage {
@@ -79,8 +91,12 @@ export class RepositoryStorage {
 
   write(relativePath: string, value: object, replace = false): void {
     const absolute = this.resolve(relativePath);
+    const immutableHistory = this.isImmutableHistoryPath(absolute);
     mkdirSync(path.dirname(absolute), { recursive: true });
     this.assertNoSymlink(absolute);
+    if (replace && immutableHistory && existsSync(absolute)) {
+      throw new Error(`Refusing to replace immutable history object: ${relativePath}`);
+    }
     if (!replace && existsSync(absolute)) {
       throw new Error(`Refusing to overwrite immutable object: ${relativePath}`);
     }
@@ -93,10 +109,13 @@ export class RepositoryStorage {
         : stringify(value);
       writeFileSync(temporary, serialized, { encoding: "utf8", flag: "wx" });
       this.assertNoSymlink(absolute);
+      if (replace && immutableHistory && existsSync(absolute)) {
+        throw new Error(`Refusing to replace immutable history object: ${relativePath}`);
+      }
       if (!replace && existsSync(absolute)) {
         throw new Error(`Refusing to overwrite immutable object: ${relativePath}`);
       }
-      if (replace) {
+      if (replace && !immutableHistory) {
         renameSync(temporary, absolute);
       } else {
         linkSync(temporary, absolute);
@@ -128,9 +147,17 @@ export class RepositoryStorage {
   }
 
   remove(relativePath: string): void {
+    this.#remove(relativePath, false);
+  }
+
+  #remove(relativePath: string, allowHistory: boolean): void {
     const absolute = this.resolve(relativePath);
     this.assertNoSymlink(absolute);
-    if (existsSync(absolute)) unlinkSync(absolute);
+    if (!existsSync(absolute)) return;
+    if (!allowHistory && this.isImmutableHistoryPath(absolute)) {
+      throw new Error(`Refusing to remove immutable history object: ${relativePath}`);
+    }
+    unlinkSync(absolute);
   }
 
   synchronize(): void {
@@ -197,6 +224,12 @@ export class RepositoryStorage {
       throw new Error("Path escapes AISpec repository root");
     }
     return absolute;
+  }
+
+  private isImmutableHistoryPath(absolute: string): boolean {
+    const directory = path.relative(this.root, absolute).split(path.sep)[0] ?? "";
+    const normalized = process.platform === "win32" ? directory.toLowerCase() : directory;
+    return normalized === "commits" || normalized === "snapshots";
   }
 
   private assertNoSymlink(absolute: string): void {
