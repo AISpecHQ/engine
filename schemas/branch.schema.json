@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:aispec:schema:branch",
+  "type": "object",
+  "required": ["id", "name", "head", "createdAt", "author"],
+  "properties": {
+    "id": {
+      "$ref": "urn:aispec:schema:aispec#/$defs/id"
+    },
+    "name": {
+      "$ref": "urn:aispec:schema:aispec#/$defs/id"
+    },
+    "parent": {
+      "$ref": "urn:aispec:schema:aispec#/$defs/id"
+    },
+    "head": {
+      "$ref": "urn:aispec:schema:aispec#/$defs/id"
+    },
+    "createdAt": {
+      "$ref": "urn:aispec:schema:aispec#/$defs/utcTimestamp"
+    },
+    "author": {
+      "$ref": "urn:aispec:schema:aispec#/$defs/id"
+    },
+    "description": {
+      "type": "string"
+    },
+    "tags": {
+      "$ref": "urn:aispec:schema:aispec#/$defs/stringArray"
+    },
+    "metadata": {
+      "$ref": "urn:aispec:schema:aispec#/$defs/metadata"
+    }
+  }
+}

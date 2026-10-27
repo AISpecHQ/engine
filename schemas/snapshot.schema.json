@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:aispec:schema:snapshot",
+  "type": "object",
+  "required": [
+    "id",
+    "nodeId",
+    "version",
+    "createdAt",
+    "configuration",
+    "capabilities",
+    "connectors",
+    "artifacts"
+  ],
+  "properties": {
+    "id": {
+      "$ref": "urn:aispec:schema:aispec#/$defs/id"
+    },
+    "nodeId": {
+      "$ref": "urn:aispec:schema:aispec#/$defs/id"
+    },
+    "version": {
+      "type": "number"
+    },
+    "createdAt": {
+      "$ref": "urn:aispec:schema:aispec#/$defs/utcTimestamp"
+    },
+    "configuration": {
+      "type": "object"
+    },
+    "capabilities": {
+      "$ref": "urn:aispec:schema:aispec#/$defs/stringArray"
+    },
+    "connectors": {
+      "$ref": "urn:aispec:schema:aispec#/$defs/stringArray"
+    },
+    "artifacts": {
+      "$ref": "urn:aispec:schema:aispec#/$defs/stringArray"
+    },
+    "metadata": {
+      "$ref": "urn:aispec:schema:aispec#/$defs/metadata"
+    }
+  }
+}

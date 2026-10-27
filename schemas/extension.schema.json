@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:aispec:schema:extension",
+  "type": "object",
+  "required": ["id", "namespace", "version", "requires"],
+  "properties": {
+    "id": {
+      "$ref": "urn:aispec:schema:aispec#/$defs/id"
+    },
+    "name": {
+      "type": "string"
+    },
+    "namespace": {
+      "$ref": "urn:aispec:schema:aispec#/$defs/id"
+    },
+    "version": {
+      "$ref": "urn:aispec:schema:aispec#/$defs/semanticVersion"
+    },
+    "requires": {
+      "type": "object",
+      "required": ["aispec"],
+      "properties": {
+        "aispec": {
+          "type": "string"
+        }
+      }
+    },
+    "author": {
+      "type": "string"
+    },
+    "description": {
+      "type": "string"
+    },
+    "metadata": {
+      "$ref": "urn:aispec:schema:aispec#/$defs/metadata"
+    }
+  }
+}

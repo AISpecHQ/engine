@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:aispec:schema:node",
+  "type": "object",
+  "required": ["id"],
+  "properties": {
+    "id": {
+      "$ref": "urn:aispec:schema:aispec#/$defs/id"
+    }
+  }
+}
