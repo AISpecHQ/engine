@@ -6,6 +6,8 @@ import {
   validateObject as validateRepositoryObject,
   validateRepository,
 } from "./validation.js";
+import { persistCommitAndAdvanceBranch } from "./versioning/commit.js";
+import { reconstructVersionedState } from "./versioning/state.js";
 import type {
   AISpecNode,
   Branch,
@@ -270,24 +272,15 @@ export class AISpecEngine {
       metadata: input.metadata ?? {},
     };
     const commitPath = this.storage.pathFor("commits", commit.id);
-    this.storage.write(commitPath, commit);
-    try {
-      this.storage.write(
-        this.storage.pathFor("branches", branch.id),
-        { ...branch, head: commit.id },
+    persistCommitAndAdvanceBranch(commit, branch, branchName, {
+      writeCommit: (value) => this.storage.write(commitPath, value),
+      advanceBranch: (currentBranch, commitId) => this.storage.write(
+        this.storage.pathFor("branches", currentBranch.id),
+        { ...currentBranch, head: commitId },
         true,
-      );
-    } catch (cause) {
-      try {
-        removeDuringRollback(this.storage, commitPath);
-      } catch (rollbackCause) {
-        throw new AggregateError(
-          [cause, rollbackCause],
-          `Failed to advance branch ${branchName} and remove incomplete commit ${commit.id}`,
-        );
-      }
-      throw cause;
-    }
+      ),
+      removeIncompleteCommit: () => removeDuringRollback(this.storage, commitPath),
+    });
     return commit;
   }
 
@@ -305,58 +298,14 @@ export class AISpecEngine {
   }
 
   getStateAtCommit(commitId: string): Map<string, Snapshot> {
-    const states = new Map<string, Map<string, Snapshot>>();
-    const readCommit = (id: string): Commit => {
-      let commit: Commit | undefined;
-      try {
-        commit = this.getCommit(id);
-      } catch (cause) {
-        throw new Error(
-          `Failed to read commit ${id} while reconstructing repository state: ${
-            cause instanceof Error ? cause.message : String(cause)
-          }`,
-          { cause },
-        );
-      }
-      if (!commit) throw new Error(`Commit not found: ${id}`);
-      return commit;
-    };
-    const readSnapshot = (id: string): Snapshot => {
-      let snapshot: Snapshot | undefined;
-      try {
-        snapshot = this.getSnapshot(id);
-      } catch (cause) {
-        throw new Error(
-          `Failed to read snapshot ${id} while reconstructing repository state: ${
-            cause instanceof Error ? cause.message : String(cause)
-          }`,
-          { cause },
-        );
-      }
-      if (!snapshot) throw new Error(`Snapshot not found: ${id}`);
-      return snapshot;
-    };
-    const stateAt = (id: string, active = new Set<string>()): Map<string, Snapshot> => {
-      const cached = states.get(id);
-      if (cached) return new Map(cached);
-      if (active.has(id)) throw new Error(`Commit history cycle detected: ${id}`);
-
-      const commit = readCommit(id);
-      const nextActive = new Set(active).add(id);
-      const state = new Map<string, Snapshot>();
-      for (const parent of commit.parents) {
-        for (const [nodeId, snapshot] of stateAt(parent, nextActive)) {
-          if (!state.has(nodeId)) state.set(nodeId, snapshot);
-        }
-      }
-      for (const snapshotId of commit.snapshotIds) {
-        const snapshot = readSnapshot(snapshotId);
-        state.set(snapshot.nodeId, snapshot);
-      }
-      states.set(id, state);
-      return new Map(state);
-    };
-    return stateAt(commitId);
+    return reconstructVersionedState(
+      commitId,
+      {
+        readCommit: (id) => this.getCommit(id),
+        readSnapshot: (id) => this.getSnapshot(id),
+        getStateKey: (snapshot) => snapshot.nodeId,
+      },
+    );
   }
 
   restoreSnapshot(

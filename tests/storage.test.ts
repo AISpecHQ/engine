@@ -10,6 +10,7 @@ vi.mock("node:fs", async (importOriginal) => {
   return {
     ...actual,
     fsyncSync: vi.fn(actual.fsyncSync),
+    renameSync: vi.fn(actual.renameSync),
     unlinkSync: vi.fn(actual.unlinkSync),
   };
 });
@@ -114,6 +115,31 @@ describe("RepositoryStorage", () => {
         head: "new-head",
       });
     } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("retries transient Windows EPERM errors when replacing a mutable file", async (context) => {
+    if (process.platform !== "win32") context.skip();
+    const root = await mkdtemp(path.join(tmpdir(), "aispec-storage-"));
+    const rename = vi.mocked(fs.renameSync);
+    const originalRename = rename.getMockImplementation()!;
+    const transientError = Object.assign(new Error("Transient file lock"), { code: "EPERM" });
+    try {
+      const storage = RepositoryStorage.initialize(root);
+      const branchPath = storage.pathFor("branches", "retry-branch");
+      storage.write(branchPath, { id: "retry-branch", head: "old-head" });
+      rename.mockClear();
+      rename.mockImplementationOnce(() => {
+        throw transientError;
+      });
+
+      storage.write(branchPath, { id: "retry-branch", head: "new-head" }, true);
+
+      expect(rename).toHaveBeenCalledTimes(2);
+      expect(storage.read(branchPath)).toEqual({ id: "retry-branch", head: "new-head" });
+    } finally {
+      rename.mockImplementation(originalRename);
       await rm(root, { recursive: true, force: true });
     }
   });

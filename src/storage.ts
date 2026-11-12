@@ -32,6 +32,9 @@ const DATA_DIRECTORIES = [
   "extensions",
 ] as const;
 
+// Windows may transiently deny replacement while another process scans the destination.
+const WINDOWS_RENAME_RETRY_DELAYS_MS = [10, 25, 50, 100, 200] as const;
+const RENAME_WAIT_BUFFER = new Int32Array(new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT));
 const internalRemovers = new WeakMap<RepositoryStorage, (relativePath: string) => void>();
 
 export function removeDuringRollback(
@@ -116,7 +119,7 @@ export class RepositoryStorage {
         throw new Error(`Refusing to overwrite immutable object: ${relativePath}`);
       }
       if (replace && !immutableHistory) {
-        renameSync(temporary, absolute);
+        this.renameWithWindowsRetry(temporary, absolute);
       } else {
         linkSync(temporary, absolute);
         targetCreated = true;
@@ -224,6 +227,26 @@ export class RepositoryStorage {
       throw new Error("Path escapes AISpec repository root");
     }
     return absolute;
+  }
+
+  private renameWithWindowsRetry(source: string, destination: string): void {
+    for (let attempt = 0; ; attempt += 1) {
+      try {
+        this.assertNoSymlink(destination);
+        renameSync(source, destination);
+        return;
+      } catch (error) {
+        const isWindowsPermissionError =
+          process.platform === "win32" &&
+          typeof error === "object" &&
+          error !== null &&
+          "code" in error &&
+          error.code === "EPERM";
+        const delay = WINDOWS_RENAME_RETRY_DELAYS_MS[attempt];
+        if (!isWindowsPermissionError || delay === undefined) throw error;
+        Atomics.wait(RENAME_WAIT_BUFFER, 0, 0, delay);
+      }
+    }
   }
 
   private isImmutableHistoryPath(absolute: string): boolean {

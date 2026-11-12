@@ -2,9 +2,8 @@
 
 Reference implementation of the AISpec repository engine. This repository is
 separate from `development-system`: it manages AISpec repository data and does
-not run AI models or orchestrate engineering tasks. It includes a phase-one
-local CLI for repository initialization, validation, and supported-object
-inspection.
+not run AI models or orchestrate engineering tasks. The user-facing `aispec`
+command is published separately by `@aispechq/cli`.
 
 ## Current implementation status
 
@@ -13,8 +12,17 @@ verified. Repository creation, reopening, persistence, duplicate protection,
 branch/history behavior, graph traversal, snapshot restore, and validation checks
 all pass in the current test suite.
 
-This is still not a production-ready reference implementation, but the Engine
-foundation is now materially more complete than the initial prototype.
+This is a local, synchronous, filesystem-backed reference implementation. The
+test suite covers the repository lifecycle, validation, history operations, and
+consumption through the package's public API exports. These checks are not a
+formal AISpec certification or a cross-implementation interoperability suite.
+
+The implementation is narrower than the broader Developer Guide architecture:
+it provides AISpec repository persistence, validation, graph traversal, and
+history, but not yet a workflow execution runtime, a full language parser/IR,
+or version-compatibility negotiation. The Developer Guide describes the
+intended architecture; the Specification and RFCs remain authoritative for
+normative behavior.
 
 The current source is organized as follows:
 
@@ -45,7 +53,8 @@ must not silently replace or extend their requirements.
 contents of the manifest and canonical repository object files through the
 operating system, without changing repository contents. It is idempotent, but
 does not provide atomic multi-file persistence or guarantee directory-entry
-metadata durability; see RFC-0010 and RFC-0009.
+metadata durability. These are explicit limits of the RFC-0009/RFC-0010
+contract, not missing guarantees that this implementation can claim to provide.
 
 ## Reproducible checks
 
@@ -119,55 +128,70 @@ new Snapshot and Commit; it does not rewrite history. `getStateAtCommit(id)`
 returns a `Map` from Node ID to Snapshot. There is no separate “current state”
 method; resolve a Branch and pass its `head` to `getStateAtCommit()`.
 
+The package also exports `reconstructVersionedState()` as a domain-agnostic
+building block. It accepts a `VersionedStateReader` adapter that reads commits
+and snapshots and selects each snapshot's state key; it reconstructs parent
+history in order, with the first parent winning conflicts, then applies
+snapshots from the target commit. It does not create repositories or write
+history. The `AISpecEngine` itself continues to enforce the AISpec repository
+format and rules.
+
+For example, a project can reconstruct its own resources by supplying its
+storage readers and key selector:
+
+```ts
+import {
+  reconstructVersionedState,
+  type VersionedCommit,
+  type VersionedStateReader,
+} from "@aispechq/engine";
+
+interface DocumentSnapshot {
+  documentId: string;
+  content: string;
+}
+
+const commits = new Map<string, VersionedCommit>([
+  ["base", { parents: [], snapshotIds: ["snapshot-1"] }],
+  ["head", { parents: ["base"], snapshotIds: [] }],
+]);
+const snapshots = new Map<string, DocumentSnapshot>([
+  ["snapshot-1", { documentId: "doc-1", content: "Initial content" }],
+]);
+const reader: VersionedStateReader<VersionedCommit, DocumentSnapshot, string> = {
+  readCommit: (id) => commits.get(id),
+  readSnapshot: (id) => snapshots.get(id),
+  getStateKey: (snapshot) => snapshot.documentId,
+};
+const documentState = reconstructVersionedState("head", reader);
+```
+
+`persistCommitAndAdvanceBranch()` is another reusable primitive for storage
+adapters: it writes a commit before advancing a branch and removes the
+incomplete commit if advancing fails. If cleanup also fails, it reports both
+errors in an `AggregateError`. This is rollback behavior, not a multi-file
+atomic transaction.
+
 The filesystem API is synchronous: operations throw on errors, so handle
 expected failures with `try`/`catch`. The Engine holds no persistent file
 handles and currently exposes no `close()` or `dispose()` method.
 
-## CLI (phases 1 and 2)
+## CLI
 
-After building or installing the package, the `aispec` executable supports:
+The Engine package publishes the repository API only; it does not install an
+`aispec` executable. Install `@aispechq/cli` to use the standalone command-line
+client. The CLI declares the Engine as a runtime dependency and publishes the
+`aispec` command. See the [CLI repository](https://github.com/AISpecHQ/cli) for
+its supported commands, output contracts, and development instructions.
 
-```text
-aispec init [<path>] --name <name> [--author <author>] [--version <semver>] [--json]
-aispec validate [--repo <path>] [--json]
-aispec inspect manifest [--repo <path>] [--json]
-aispec inspect <node|snapshot|commit|branch> <id-or-name> [--repo <path>] [--json]
-aispec snapshot <node-id> --config <file> [--repo <path>] [--json]
-aispec commit --message <message> --snapshot <id> [--snapshot <id> ...]
-              --author <author> [--branch <name>] [--repo <path>] [--json]
-aispec branch list [--repo <path>] [--json]
-aispec branch create <name> --author <author> [--from <branch-or-commit>]
-                    [--description <text>] [--repo <path>] [--json]
-aispec branch inspect <name-or-id> [--repo <path>] [--json]
-```
-
-For `validate`, `inspect`, `snapshot`, `commit`, and `branch`, repository
-selection uses `--repo`, then `AISPEC_REPOSITORY`, then ancestor search from
-the current directory. `init` refuses non-empty target directories. Exit code
-`0` means success, `1` means
-validation completed but found errors, `2` means invalid usage, unresolved
-repository, unsupported type, missing object, or unsafe init target, and `3`
-means an Engine or filesystem execution failure, including duplicate branch
-creation. Snapshot configuration is JSON, and its relative path is resolved
-from the invoking working directory. Commits require an author and at least
-one existing snapshot; branches require an author. Mutations call
-`saveRepository()` before reporting success, but the Engine does not guarantee
-crash-safe atomicity across all files. JSON output uses a single object on
-stdout. `status`, `merge`, and `restore` are not part of this CLI phase.
-
-See [docs/cli-design.md](./docs/cli-design.md) for command behavior, output
-contracts, implementation limits, and the planned later phases.
-
-## Next engineering steps
+## Open verification work
 
 1. Clarify whether list ordering and snapshot filtering are intended API
    guarantees or implementation choices.
-2. Improve crash-safe multi-file recovery if the storage contract is extended
-   to require it; current compensating cleanup only covers synchronous errors.
-3. Validate interoperability against repository fixtures produced by other
-   AISpec implementations.
-4. Only after the Engine API and tests are stable, implement the separate
-   `aispec-cli` on top of the public Engine API.
+2. Validate interoperability against repositories produced by independent
+   AISpec implementations; the current tests do not provide that coverage.
+3. Consider stronger crash recovery only if a future storage contract requires
+   guarantees beyond RFC-0009/RFC-0010.
 
 ## Scope
 
@@ -176,5 +200,12 @@ interaction belongs in the CLI; model execution and task orchestration belong
 in separate tooling. Snapshots and Commits are immutable, and restoring a
 previous state must create new history rather than rewrite existing objects.
 
-For current ecosystem status and handoff context, see the Developer Guide's
-[`CURRENT_STATUS.md`](../developer-guide/CURRENT_STATUS.md).
+The Engine is an open-source reference implementation intended to be studied,
+reused, and adapted by other versioning projects. Its current API and on-disk
+format implement AISpec: another project can use it as a starting point, but
+direct integration requires representing data with AISpec objects or adapting
+the domain and storage layers. It does not currently track arbitrary project
+files or replace Git.
+
+For the intended component responsibilities and boundaries, see the Developer
+Guide's [Architecture](../developer-guide/ARCHITECTURE.md).

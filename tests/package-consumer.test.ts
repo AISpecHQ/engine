@@ -44,8 +44,40 @@ describe("published package consumer", () => {
       "-e",
       `
         import assert from "node:assert/strict";
-        import { AISpecEngine, validateAgainstSchema } from "@aispechq/engine";
+        import {
+          AISpecEngine,
+          persistCommitAndAdvanceBranch,
+          reconstructVersionedState,
+          validateAgainstSchema,
+        } from "@aispechq/engine";
         import path from "node:path";
+
+        const writes = [];
+        persistCommitAndAdvanceBranch(
+          { id: "commit" },
+          { id: "branch" },
+          "main",
+          {
+            writeCommit: () => writes.push("commit"),
+            advanceBranch: () => writes.push("branch"),
+            removeIncompleteCommit: () => writes.push("rollback"),
+          },
+        );
+        assert.deepEqual(writes, ["commit", "branch"]);
+
+        const state = reconstructVersionedState(
+          "head",
+          {
+            readCommit: (id) => id === "head"
+              ? { parents: [], snapshotIds: ["snapshot"] }
+              : undefined,
+            readSnapshot: (id) => id === "snapshot"
+              ? { id, entityId: "entity", value: 1 }
+              : undefined,
+            getStateKey: (snapshot) => snapshot.entityId,
+          },
+        );
+        assert.equal(state.get("entity")?.value, 1);
 
         const root = path.join(process.cwd(), "repository");
         const engine = AISpecEngine.create(root, { name: "Installed consumer" });
