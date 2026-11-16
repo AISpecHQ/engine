@@ -11,7 +11,7 @@
     "skipLibCheck": true,
     "types": ["node"],
     "paths": {
-      "@aispechq/engine": ["./src/index.ts"]
+      "@iaspec/engine": ["./src/index.ts"]
     }
   },
   "include": ["src/**/*.ts", "cli/**/*.ts"],

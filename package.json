@@ -1,5 +1,5 @@
 {
-  "name": "@aispechq/engine",
+  "name": "@iaspec/engine",
   "version": "0.1.0",
   "description": "Reference filesystem engine for AISpec repositories",
   "license": "Apache-2.0",

@@ -3,7 +3,7 @@
 Reference implementation of the AISpec repository engine. This repository is
 separate from `development-system`: it manages AISpec repository data and does
 not run AI models or orchestrate engineering tasks. The user-facing `aispec`
-command is published separately by `@aispechq/cli`.
+command is published separately by `@iaspec/cli`.
 
 ## Current implementation status
 
@@ -91,9 +91,9 @@ installing the published package (or installing this repository by local
 path), import the Engine from the package root:
 
 ```ts
-// Install from npm: npm install @aispechq/engine
+// Install from npm: npm install @iaspec/engine
 // Or install a local checkout: npm install <path-to-aispec-engine>
-import { AISpecEngine } from "@aispechq/engine";
+import { AISpecEngine } from "@iaspec/engine";
 
 const engine = AISpecEngine.create("./my-repository", {
   name: "Example",
@@ -144,7 +144,7 @@ import {
   reconstructVersionedState,
   type VersionedCommit,
   type VersionedStateReader,
-} from "@aispechq/engine";
+} from "@iaspec/engine";
 
 interface DocumentSnapshot {
   documentId: string;
@@ -179,7 +179,7 @@ handles and currently exposes no `close()` or `dispose()` method.
 ## CLI
 
 The Engine package publishes the repository API only; it does not install an
-`aispec` executable. Install `@aispechq/cli` to use the standalone command-line
+`aispec` executable. Install `@iaspec/cli` to use the standalone command-line
 client. The CLI declares the Engine as a runtime dependency and publishes the
 `aispec` command. See the [CLI repository](https://github.com/AISpecHQ/cli) for
 its supported commands, output contracts, and development instructions.

@@ -6,7 +6,7 @@ set remain design-only.
 
 ## 1. Scope and verified Engine surface
 
-The proposed CLI is a thin local interface to `@aispechq/engine`. It must call
+The proposed CLI is a thin local interface to `@iaspec/engine`. It must call
 only the package's public exports, not import Engine source files or access its
 private storage implementation. The current public entry point exports:
 
@@ -96,10 +96,10 @@ working directory after the CLI package is installed. The CLI must import the
 Engine through its package root, for example:
 
 ```ts
-import { AISpecEngine } from "@aispechq/engine";
+import { AISpecEngine } from "@iaspec/engine";
 ```
 
-It must not import `@aispechq/engine/dist/...`, `src/...`, or any other private
+It must not import `@iaspec/engine/dist/...`, `src/...`, or any other private
 package path.
 
 ### Repository resolution
@@ -484,7 +484,7 @@ aispec-engine/
     cli/index.js            # compiled executable with node shebang
 ```
 
-The CLI imports only `@aispechq/engine`. It must not copy schemas or reach into
+The CLI imports only `@iaspec/engine`. It must not copy schemas or reach into
 Engine source. The Engine locates its schemas relative to its installed module,
 which allows validation from a different process CWD.
 
@@ -492,7 +492,7 @@ At design time, the Engine tarball has been installed and exercised locally;
 registry publication/availability has not been established. Until that is
 decided, a CLI development environment must depend on the verified Engine
 tarball or a local package path, rather than assuming
-`npm install @aispechq/engine` can retrieve a published version.
+`npm install @iaspec/engine` can retrieve a published version.
 
 ### Argument parsing
 
