@@ -43,6 +43,48 @@ The published specification schemas remain empty and are not modified by this
 repository. Connector, Artifact, Flow, and other objects without RFC-defined
 field contracts do not yet have structural schemas here.
 
+## EngineSpec v2 local API
+
+The package also exports `EngineSpecEngine`, a domain-neutral, asynchronous API
+for EngineSpec v2. It keeps the existing AISpec API unchanged and currently
+provides:
+
+- independent workspace and Trace Store locations;
+- canonical JSON/JCS envelopes with SHA-256 object IDs;
+- content-addressable local storage;
+- complete snapshots, commits, branches, tags and compare-and-swap refs;
+- filesystem and structured-resource adapters;
+- diff, three-way merge, restore and offline bundles;
+- detached Ed25519 signatures;
+- explicit, copy-on-migrate AISpec v0 migration.
+
+```ts
+const engine = await EngineSpecEngine.initialize({
+  name: "Example",
+  workspace: "./workspace",
+  traceStore: { scheme: "file", value: "./trace-store" },
+});
+
+const snapshot = await engine.capture({
+  selectors: [
+    { type: "filesystem.directory", locator: { path: "." } },
+  ],
+});
+
+await engine.commit({
+  snapshotId: snapshot.id,
+  ref: "heads/main",
+  expectedHead: null,
+  expectedGeneration: 0,
+  author: { id: "local:developer" },
+  message: "Initial state",
+});
+```
+
+EngineSpec v2 storage is local-first. Cloud is not required. AISpec v0
+repositories remain available through `AISpecEngine`; migration uses
+`migrateAISpecV0()` and does not rewrite the source repository.
+
 The repository format is intended to follow the official AISpec specification
 and RFCs, especially RFC-0001 (layout), RFC-0002 (commits), RFC-0003
 (snapshots), RFC-0004 (branches), RFC-0005 (validation), RFC-0006 (graph), and
