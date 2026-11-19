@@ -3,6 +3,12 @@ export { RepositoryStorage } from "./storage.js";
 export { validateRepository } from "./validation.js";
 export { validateAgainstSchema } from "./schema-validation.js";
 export {
+  generateSigningKeyPair,
+  verifyCommitSignature,
+  type CommitSignatureVerification,
+  type SigningKeyPair,
+} from "./signatures.js";
+export {
   persistCommitAndAdvanceBranch,
   type VersionedCommitRecord,
   type VersionedCommitWriter,

@@ -176,6 +176,31 @@ The filesystem API is synchronous: operations throw on errors, so handle
 expected failures with `try`/`catch`. The Engine holds no persistent file
 handles and currently exposes no `close()` or `dispose()` method.
 
+### Optional commit signatures
+
+`generateSigningKeyPair(passphrase)` creates an Ed25519 key pair with an
+encrypted PKCS#8 private key. Store the private key outside the repository and
+never commit the key or its passphrase. A passphrase must contain at least
+12 characters. Supply the encrypted private key and the declared author's ID,
+name, and email in `createCommit({ ..., signing: ... })` to sign a new commit.
+Existing callers may continue creating unsigned commits.
+
+`verifyCommitSignature(commit)` returns `valid`, `invalid`, or `unsigned`.
+`valid` proves that the commit fields and declared identity match the included
+public key's signature. It does not prove that the declared name or email
+belongs to the key holder; establishing trust in a key is a separate concern.
+For signed commits, `engine.verifySignedCommit(id)` also checks SHA-256
+digests of directly referenced Snapshot objects. It does not verify the
+contents of external artifacts or the integrity of parent commits. A missing
+signature is reported as `unsigned`, including if it was removed outside the
+Engine.
+
+`createCommit()` also accepts optional `participants`, recording explicitly
+declared human and agent IDs, names, actions, and relationships. Agent entries
+include a version and may include a model. These declarations are included
+in a signature when the Commit is signed, but are not independent proof of
+who acted.
+
 ## CLI
 
 The Engine package publishes the repository API only; it does not install an

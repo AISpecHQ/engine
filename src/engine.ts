@@ -8,10 +8,17 @@ import {
 } from "./validation.js";
 import { persistCommitAndAdvanceBranch } from "./versioning/commit.js";
 import { reconstructVersionedState } from "./versioning/state.js";
+import {
+  hashCanonicalObject,
+  signCommit,
+  verifyCommitSignature,
+  type CommitSignatureVerification,
+} from "./signatures.js";
 import type {
   AISpecNode,
   Branch,
   Commit,
+  CommitParticipant,
   CreateBranchInput,
   CreateCommitInput,
   CreateRepositoryOptions,
@@ -260,7 +267,23 @@ export class AISpecEngine {
       if (!this.getSnapshot(id)) throw new Error(`Snapshot not found: ${id}`);
     }
 
-    const commit: Commit = {
+    const metadata = { ...input.metadata };
+    if (input.participants !== undefined) {
+      const field = "org.aispec.commitParticipants.v1";
+      if (field in metadata) throw new Error("Commit participants are already present in metadata");
+      assertCommitParticipants(input.participants, input.signing?.identity.id);
+      metadata[field] = input.participants;
+    }
+    if (input.signing) {
+      const field = "org.aispec.snapshotDigests.v1";
+      if (field in metadata) throw new Error("Snapshot digests are already present in metadata");
+      metadata[field] = snapshotIds.map((id) => {
+        const snapshot = this.getSnapshot(id);
+        if (!snapshot) throw new Error(`Snapshot not found: ${id}`);
+        return { id, sha256: hashCanonicalObject(snapshot) };
+      });
+    }
+    let commit: Commit = {
       id: `c_${randomUUID()}`,
       parents,
       branch: branchName,
@@ -269,8 +292,16 @@ export class AISpecEngine {
       message: input.message,
       snapshotIds,
       tags: input.tags ?? [],
-      metadata: input.metadata ?? {},
+      metadata,
     };
+    if (input.signing) {
+      commit = signCommit(
+        commit,
+        input.signing.identity,
+        input.signing.encryptedPrivateKey,
+        input.signing.passphrase,
+      );
+    }
     const commitPath = this.storage.pathFor("commits", commit.id);
     persistCommitAndAdvanceBranch(commit, branch, branchName, {
       writeCommit: (value) => this.storage.write(commitPath, value),
@@ -306,6 +337,35 @@ export class AISpecEngine {
         getStateKey: (snapshot) => snapshot.nodeId,
       },
     );
+  }
+
+  verifySignedCommit(commitId: string): CommitSignatureVerification {
+    const commit = this.getCommit(commitId);
+    if (!commit) throw new Error(`Commit not found: ${commitId}`);
+    const result = verifyCommitSignature(commit);
+    if (result.status !== "valid") return result;
+    const digests = commit.metadata?.["org.aispec.snapshotDigests.v1"];
+    if (!Array.isArray(digests) || digests.length !== commit.snapshotIds.length) {
+      return { status: "invalid", reason: "Signed snapshot digests are missing or incomplete." };
+    }
+    for (let index = 0; index < commit.snapshotIds.length; index += 1) {
+      const id = commit.snapshotIds[index]!;
+      const digest: unknown = digests[index];
+      if (!isRecord(digest) || digest.id !== id || typeof digest.sha256 !== "string" ||
+          !/^[a-f0-9]{64}$/.test(digest.sha256)) {
+        return { status: "invalid", reason: `Invalid signed digest for snapshot ${id}.` };
+      }
+      try {
+        const snapshot = this.getSnapshot(id);
+        if (!snapshot || hashCanonicalObject(snapshot) !== digest.sha256) {
+          return { status: "invalid", reason: `Snapshot ${id} is missing or has changed.` };
+        }
+      } catch (cause) {
+        const detail = cause instanceof Error ? cause.message : String(cause);
+        return { status: "invalid", reason: `Could not verify snapshot ${id}: ${detail}` };
+      }
+    }
+    return result;
   }
 
   restoreSnapshot(
@@ -441,4 +501,29 @@ export class AISpecEngine {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function assertCommitParticipants(value: unknown, authorId?: string): asserts value is CommitParticipant[] {
+  if (!Array.isArray(value)) throw new Error("Commit participants must be an array");
+  const participants: unknown[] = value;
+  const ids = new Set<string>();
+  if (authorId) ids.add(authorId);
+  for (const participant of participants) {
+    if (!isRecord(participant) || (participant.kind !== "human" && participant.kind !== "agent") ||
+        typeof participant.id !== "string" || !participant.id.trim() ||
+        typeof participant.name !== "string" || !participant.name.trim() ||
+        typeof participant.action !== "string" ||
+        !["initiated", "modified", "reviewed", "approved"].includes(participant.action) ||
+        (participant.kind === "agent" && (typeof participant.version !== "string" || !participant.version.trim())) ||
+        (participant.model !== undefined && (participant.kind !== "agent" || typeof participant.model !== "string" || !participant.model.trim())) ||
+        (participant.relatedTo !== undefined && (typeof participant.relatedTo !== "string" || !participant.relatedTo.trim()))) {
+      throw new Error("Invalid commit participant: provide a kind, id, name, action, and agent version");
+    }
+    ids.add(participant.id);
+  }
+  for (const participant of participants) {
+    if (isRecord(participant) && typeof participant.relatedTo === "string" && !ids.has(participant.relatedTo)) {
+      throw new Error(`Commit participant references an unknown identity: ${participant.relatedTo}`);
+    }
+  }
 }

@@ -3,9 +3,95 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { AISpecEngine } from "../src/engine.js";
+import { generateSigningKeyPair, verifyCommitSignature } from "../src/signatures.js";
 import { RepositoryStorage } from "../src/storage.js";
 
 describe("AISpecEngine repository foundation", () => {
+  it("persists verifiable signed commits while leaving legacy commits readable", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "aispec-engine-signature-"));
+    try {
+      const engine = AISpecEngine.create(root, { name: "Signed history" });
+      const initial = engine.getCommit(engine.getBranch("main")!.head)!;
+      expect(verifyCommitSignature(initial)).toEqual({ status: "unsigned" });
+      const identity = { id: "author-1", name: "Test author", email: "author@example.test" };
+      const passphrase = "a strong test passphrase";
+      const keys = generateSigningKeyPair(passphrase);
+      expect(keys.encryptedPrivateKey).toContain("ENCRYPTED PRIVATE KEY");
+      engine.addNode({ id: "signed-node" });
+      const snapshot = engine.createSnapshot({
+        nodeId: "signed-node",
+        configuration: { prompt: "Original" },
+      });
+      const commit = engine.createCommit({
+        message: "Record signed change",
+        author: identity.name,
+        snapshotIds: [snapshot.id],
+        signing: { identity, encryptedPrivateKey: keys.encryptedPrivateKey, passphrase },
+        participants: [
+          { kind: "human", id: identity.id, name: identity.name, action: "initiated" },
+          {
+            kind: "agent",
+            id: "agent-1",
+            name: "Example agent",
+            version: "1.0",
+            model: "example-model",
+            action: "modified",
+            relatedTo: identity.id,
+          },
+        ],
+      });
+      const reopened = AISpecEngine.open(root).getCommit(commit.id)!;
+      expect(reopened.metadata?.["org.aispec.commitParticipants.v1"]).toMatchObject([
+        { kind: "human", id: identity.id, action: "initiated" },
+        { kind: "agent", id: "agent-1", action: "modified", relatedTo: identity.id },
+      ]);
+      expect(verifyCommitSignature(reopened)).toMatchObject({
+        status: "valid",
+        identity,
+        keyFingerprint: expect.stringMatching(/^[a-f0-9]{64}$/),
+      });
+      expect(engine.verifySignedCommit(commit.id).status).toBe("valid");
+      expect(verifyCommitSignature({ ...reopened, message: "Altered" }).status).toBe("invalid");
+      expect(verifyCommitSignature({ ...reopened, author: "Another author" }).status).toBe("invalid");
+      expect(verifyCommitSignature({
+        ...reopened,
+        metadata: { ...reopened.metadata, "org.aispec.commitParticipants.v1": [] },
+      }).status).toBe("invalid");
+      const storage = new RepositoryStorage(root);
+      const snapshotPath = path.join(root, storage.pathFor("snapshots", snapshot.id));
+      const originalFile = await readFile(snapshotPath, "utf8");
+      await writeFile(snapshotPath, originalFile.replace("Original", "Altered"));
+      expect(engine.verifySignedCommit(commit.id)).toMatchObject({
+        status: "invalid",
+        reason: expect.stringContaining(snapshot.id),
+      });
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects a wrong key password without creating or advancing a commit", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "aispec-engine-signature-"));
+    try {
+      const engine = AISpecEngine.create(root, { name: "Signing failure" });
+      const before = engine.getBranch("main")!.head;
+      const keys = generateSigningKeyPair("a strong test passphrase");
+      expect(() => engine.createCommit({
+        message: "Must not persist",
+        author: "Test author",
+        signing: {
+          identity: { id: "author-1", name: "Test author", email: "author@example.test" },
+          encryptedPrivateKey: keys.encryptedPrivateKey,
+          passphrase: "incorrect password",
+        },
+      })).toThrow();
+      expect(engine.getBranch("main")!.head).toBe(before);
+      expect(engine.listCommits()).toHaveLength(1);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   it("creates and reopens a repository with its canonical layout", async () => {
     const parent = await mkdtemp(path.join(tmpdir(), "aispec-engine-"));
     const root = path.join(parent, "project");

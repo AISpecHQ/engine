@@ -43,6 +43,36 @@ export interface Commit {
   metadata?: JsonObject;
 }
 
+export interface HumanIdentity {
+  id: string;
+  name: string;
+  email: string;
+}
+
+export interface CommitSigningInput {
+  identity: HumanIdentity;
+  encryptedPrivateKey: string;
+  passphrase: string;
+}
+
+export type CommitParticipant =
+  | {
+    kind: "human";
+    id: string;
+    name: string;
+    action: "initiated" | "modified" | "reviewed" | "approved";
+    relatedTo?: string;
+  }
+  | {
+    kind: "agent";
+    id: string;
+    name: string;
+    version: string;
+    model?: string;
+    action: "initiated" | "modified" | "reviewed" | "approved";
+    relatedTo?: string;
+  };
+
 export interface Branch {
   id: string;
   name: string;
@@ -100,6 +130,8 @@ export interface CreateCommitInput {
   parents?: string[];
   tags?: string[];
   metadata?: JsonObject;
+  signing?: CommitSigningInput;
+  participants?: CommitParticipant[];
 }
 
 export interface CreateBranchInput {
