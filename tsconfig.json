@@ -11,8 +11,8 @@
     "skipLibCheck": true,
     "types": ["node"],
     "paths": {
-      "@enginespec/engine": ["./src/index.ts"],
-      "@enginespec/engine/aispec-v0": ["./src/aispec-v0.ts"]
+      "@engine-spec/engine": ["./src/index.ts"],
+      "@engine-spec/engine/aispec-v0": ["./src/aispec-v0.ts"]
     }
   },
   "include": ["src/**/*.ts", "cli/**/*.ts"],

@@ -385,7 +385,7 @@ export class LocalTraceStore {
     } finally {
       await handle.close();
     }
-    await rename(temporary, file);
+    await renameWithWindowsRetry(temporary, file);
   }
 
   private async writeExclusive(file: string, bytes: Uint8Array): Promise<void> {
@@ -432,5 +432,21 @@ function isAlreadyExists(cause: unknown): boolean {
 
 function isErrorCode(cause: unknown, code: string): boolean {
   return typeof cause === "object" && cause !== null && "code" in cause && cause.code === code;
+}
+
+async function renameWithWindowsRetry(source: string, destination: string): Promise<void> {
+  const delays = [10, 25, 50, 100, 200, 400, 800, 1_000];
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      await rename(source, destination);
+      return;
+    } catch (cause) {
+      const retryable = process.platform === "win32" &&
+        (isErrorCode(cause, "EPERM") || isErrorCode(cause, "EACCES"));
+      const delay = delays[attempt];
+      if (!retryable || delay === undefined) throw cause;
+      await new Promise((resolve) => setTimeout(resolve, delay));
+    }
+  }
 }
 

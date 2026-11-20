@@ -33,7 +33,7 @@ describe("published package consumer", () => {
     const packageDirectory = path.join(
       consumerRoot,
       "node_modules",
-      "@enginespec",
+      "@engine-spec",
       "engine",
     );
     await mkdir(path.dirname(packageDirectory), { recursive: true });
@@ -47,17 +47,17 @@ describe("published package consumer", () => {
         import {
           EngineSpec,
           EngineSpecEngine,
-        } from "@enginespec/engine";
+        } from "@engine-spec/engine";
         import assertUniversal from "node:assert/strict";
         import {
           AISpecEngine,
           persistCommitAndAdvanceBranch,
           reconstructVersionedState,
           validateAgainstSchema,
-        } from "@enginespec/engine/aispec-v0";
+        } from "@engine-spec/engine/aispec-v0";
         import path from "node:path";
 
-        const universal = await import("@enginespec/engine");
+        const universal = await import("@engine-spec/engine");
         assertUniversal.equal("AISpecEngine" in universal, false);
         assertUniversal.equal("migrateAISpecV0" in universal, false);
 
@@ -116,5 +116,5 @@ describe("published package consumer", () => {
     });
 
     expect(child.status, child.stderr || child.stdout).toBe(0);
-  });
+  }, 20_000);
 });

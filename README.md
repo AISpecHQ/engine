@@ -1,96 +1,107 @@
 # EngineSpec Engine
 
-EngineSpec is an open, local-first engine for versioning, integrity, provenance,
-branches, merges and restoration of resources from any domain.
+**A universal, local-first engine for versioning, integrity, and provenance.**
 
-It works with files, structured data and custom adapters. It does not know or
-require AISpec, AI models, Cloud or Supabase.
+EngineSpec gives any software project a reliable way to save versions of its work, track changes, recover previous states, and maintain a verifiable history.
 
-## Install
+Think of it as a version-control engine that applications can use to manage their own data and resources — not just source code.
 
-```powershell
-npm install @enginespec/engine
+It works independently of AISpec, AI models, cloud providers, or any particular application.
+
+## Why EngineSpec?
+
+Applications create and modify data constantly. Keeping track of what changed, when it changed, and how to recover an earlier state can become difficult.
+
+EngineSpec provides the underlying infrastructure to:
+
+- Save snapshots of project resources.
+- Create immutable commits and maintain history.
+- Organize work through branches and tags.
+- Compare different versions.
+- Merge changes.
+- Restore previous states.
+- Verify data integrity.
+- Track provenance and authorship.
+- Work locally, without an internet connection.
+
+**EngineSpec manages the history and integrity of your resources. Your application decides what those resources represent.**
+
+## Installation
+
+```bash
+npm install @engine-spec/engine
 ```
 
-```ts
-import { EngineSpec } from "@enginespec/engine";
+## Quick Start
+
+Initialize an EngineSpec project:
+
+```typescript
+import { EngineSpec } from "@engine-spec/engine";
 
 const engine = await EngineSpec.initialize({
   name: "Example project",
   workspace: "./workspace",
-  traceStore: { scheme: "file", value: "./trace-store" },
+  traceStore: {
+    scheme: "file",
+    value: "./trace-store"
+  }
 });
+```
 
+Capture project resources:
+
+```typescript
 const snapshot = await engine.capture({
   selectors: [
-    { type: "filesystem.directory", locator: { path: "." } },
-  ],
+    {
+      type: "filesystem.directory",
+      locator: { path: "." }
+    }
+  ]
 });
+```
 
+Create a commit:
+
+```typescript
 await engine.commit({
   snapshotId: snapshot.id,
   ref: "heads/main",
   expectedHead: null,
   expectedGeneration: 0,
   author: { id: "local:developer" },
-  message: "Initial state",
+  message: "Initial state"
 });
 ```
 
-The Trace Store is independent from the workspace. Project data is never moved
-into the Trace Store unless it is explicitly captured.
+Your project now has its first recorded version.
 
-## What the Engine does
+## How It Works
 
-- canonical JSON objects with SHA-256 identities;
-- local offline Trace Stores;
-- content-addressable storage with deduplication;
-- complete snapshots and immutable commits;
-- atomic branch and tag references;
-- compare, merge, restore and validation;
-- provenance and detached Ed25519 signatures;
-- offline import/export bundles;
-- filesystem and structured-resource adapters;
-- explicit AISpec v0 compatibility and migration.
+EngineSpec separates your working files from their version history.
 
-## Public APIs
+### Workspace
 
-### EngineSpec v2
+The workspace is where your application and project resources live.
 
-```ts
-import { EngineSpec } from "@enginespec/engine";
-```
+EngineSpec does not move your original project data into its history storage unless you explicitly capture it.
 
-Use `EngineSpec` for new applications. It is asynchronous and domain-neutral.
+### Trace Store
 
-### AISpec v0 compatibility
+The Trace Store contains the information required to maintain and recover project history.
 
-```ts
-import {
-  AISpecEngine,
-  migrateAISpecV0,
-} from "@enginespec/engine/aispec-v0";
-```
+It includes snapshots, commits, references, content-addressable storage, and recovery information.
 
-AISpec v0 repositories remain readable and writable. Opening one does not
-rewrite historical objects. Commits without signatures remain valid.
+These two locations are independent.
 
-```ts
-const migrated = await migrateAISpecV0({
-  source: "./old-aispec-project",
-  workspace: "./project",
-  traceStore: { scheme: "file", value: "./trace" },
-});
-```
-
-Migration is explicit, reversible and copy-on-migrate.
-
-## Storage model
+### Storage Structure
 
 ```text
 workspace/
   original project data
-  .enginespec/workspace.json
+  .enginespec/
+    workspace.json
 
 trace-store/
   manifest.json
@@ -101,9 +112,39 @@ trace-store/
   index/
 ```
 
-`index/` is disposable. Historical objects and CAS content are immutable.
+The index is disposable and can be rebuilt. Historical objects and CAS content are immutable.
 
-## Adapters
+## Core Capabilities
+
+### Versioning
+- Snapshots and immutable commits.
+- Branches and tags.
+- History comparison.
+- Merge operations.
+- State restoration.
+
+### Integrity
+- Canonical JSON objects.
+- SHA-256 content identities.
+- Content-addressable storage (CAS).
+- Deduplication.
+- Object validation.
+
+### Provenance
+- Author and commit metadata.
+- Provenance records.
+- Ed25519 signatures.
+- Detached signature verification.
+
+### Storage and Recovery
+- Local filesystem Trace Stores.
+- Atomic reference updates.
+- Transaction and recovery mechanisms.
+- Offline import and export bundles.
+
+### Adapters
+
+EngineSpec supports different types of resources through adapters.
 
 Built-in adapters:
 
@@ -111,48 +152,121 @@ Built-in adapters:
 - `filesystem.directory`
 - `structured.json`
 
-Applications can register other adapters without adding domain concepts to the
-Core:
+Applications can register custom adapters:
 
-```ts
+```typescript
 engine.registerAdapter(adapter);
 ```
 
+This allows EngineSpec to work with resources beyond traditional files without introducing application-specific concepts into its Core.
+
+## Architecture
+
+EngineSpec is domain-neutral.
+
+It provides the infrastructure for versioning, storage, integrity, and provenance while leaving application-specific responsibilities to other systems.
+
+| Layer | Responsibility |
+|---|---|
+| Engine Core | Versioning, snapshots, commits and history |
+| Storage | Trace Store, CAS and persistence |
+| Adapters | Access to different resource types |
+| Identity | Signatures and trust |
+| Provenance | History and origin records |
+| SDK | Developer-facing integration |
+| CLI | Terminal interaction |
+| Cloud | Optional remote services |
+
+Cloud, authentication, billing, user interfaces, and application-specific execution are not part of the Engine Core.
+
+## AISpec Compatibility
+
+EngineSpec is independent of AISpec, but it provides an explicit compatibility layer for existing AISpec v0 repositories.
+
+Existing AISpec v0 repositories remain readable and writable through the compatibility API.
+
+Import:
+
+```typescript
+import {
+  AISpecEngine,
+  migrateAISpecV0
+} from "@engine-spec/engine/aispec-v0";
+```
+
+Migration example:
+
+```typescript
+const migrated = await migrateAISpecV0({
+  source: "./old-aispec-project",
+  workspace: "./project",
+  traceStore: {
+    scheme: "file",
+    value: "./trace"
+  }
+});
+```
+
+Migration is explicit, reversible, and copy-on-migrate.
+
+Opening an existing repository does not automatically rewrite historical objects. Existing commits without signatures remain valid.
+
 ## SDK and CLI
 
-TypeScript applications should use:
+For TypeScript applications:
 
-```powershell
-npm install @enginespec/typescript-sdk
+```bash
+npm install @engine-spec/typescript-sdk
 ```
 
-Terminal users should install:
+For terminal workflows:
 
-```powershell
-npm install --global @enginespec/cli
-enginespec --help
+```bash
+npm install --global @engine-spec/cli
 ```
 
-The AISpec `aispec` command remains available for compatibility.
-
-The package root is domain-neutral. AISpec v0 compatibility is intentionally
-available only from `@enginespec/engine/aispec-v0`.
+The `aispec` command remains available for compatibility with existing AISpec workflows.
 
 ## Development
 
-```powershell
+Clone the repository and install dependencies:
+
+```bash
 npm install
+```
+
+Build:
+
+```bash
 npm run build
+```
+
+Run tests:
+
+```bash
 npm test
 ```
 
-The Engine currently passes its AISpec v0 and EngineSpec v2 suites. Python uses
-the same TypeScript Core through the EngineSpec runtime protocol rather than
-duplicating storage or history rules.
+The current EngineSpec release includes EngineSpec v2 functionality and AISpec v0 compatibility.
 
-## Scope
+Python integrations use the same TypeScript Core through the EngineSpec runtime protocol rather than implementing separate storage or history rules.
 
-The Engine owns versioning, storage, integrity and provenance. UI, Cloud,
-authentication, billing and domain execution belong to separate products.
+## Design Principles
 
-Cloud is optional. EngineSpec works fully offline.
+EngineSpec follows these principles:
+
+1. **Domain-neutral:** It does not depend on a specific application or industry.
+2. **Local-first:** Core functionality works without cloud services.
+3. **Explicit storage:** Applications control where their workspace and Trace Store reside.
+4. **Integrity:** Content identities and immutable historical objects protect recorded data.
+5. **Extensible:** Adapters allow different resource types and workflows.
+6. **Interoperable:** Applications can integrate through SDKs, APIs, and other interfaces.
+7. **Separation of concerns:** The Engine handles history and integrity, while applications handle their own business logic.
+
+## License
+
+Apache License 2.0.
+
+---
+
+**EngineSpec — A universal foundation for versioning, integrity, and provenance.**

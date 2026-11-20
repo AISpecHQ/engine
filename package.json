@@ -1,6 +1,6 @@
 {
-  "name": "@enginespec/engine",
-  "version": "0.2.0",
+  "name": "@engine-spec/engine",
+  "version": "0.2.1",
   "description": "Universal local-first engine for versioning, integrity and provenance",
   "license": "Apache-2.0",
   "type": "module",
