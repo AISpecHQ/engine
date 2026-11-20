@@ -66,7 +66,10 @@ Use `EngineSpec` for new applications. It is asynchronous and domain-neutral.
 ### AISpec v0 compatibility
 
 ```ts
-import { AISpecEngine } from "@enginespec/engine";
+import {
+  AISpecEngine,
+  migrateAISpecV0,
+} from "@enginespec/engine/aispec-v0";
 ```
 
 AISpec v0 repositories remain readable and writable. Opening one does not
@@ -131,6 +134,9 @@ enginespec --help
 ```
 
 The AISpec `aispec` command remains available for compatibility.
+
+The package root is domain-neutral. AISpec v0 compatibility is intentionally
+available only from `@enginespec/engine/aispec-v0`.
 
 ## Development
 

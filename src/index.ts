@@ -1,13 +1,5 @@
-export { AISpecEngine } from "./engine.js";
-export { RepositoryStorage } from "./storage.js";
-export { validateRepository } from "./validation.js";
-export { validateAgainstSchema } from "./schema-validation.js";
-export {
-  generateSigningKeyPair,
-  verifyCommitSignature,
-  type CommitSignatureVerification,
-  type SigningKeyPair,
-} from "./signatures.js";
+export { EngineSpecEngine, EngineSpecEngine as EngineSpec } from "./enginespec/core.js";
+export { EngineSpecError } from "./enginespec/errors.js";
 export {
   persistCommitAndAdvanceBranch,
   type VersionedCommitRecord,
@@ -18,10 +10,6 @@ export {
   type VersionedCommit,
   type VersionedStateReader,
 } from "./versioning/state.js";
-export { EngineSpecEngine } from "./enginespec/core.js";
-export { EngineSpecEngine as EngineSpec } from "./enginespec/core.js";
-export { migrateAISpecV0 } from "./enginespec/compatibility.js";
-export { EngineSpecError } from "./enginespec/errors.js";
 export { LocalContentStore } from "./enginespec/cas.js";
 export { LocalTraceStore } from "./enginespec/store.js";
 export {
@@ -53,23 +41,15 @@ export {
 } from "./enginespec/format.js";
 export type * from "./enginespec/model.js";
 export type {
-  AISpecExtension,
-  AISpecNode,
-  AISpecObjectType,
-  Branch,
-  Commit,
-  CommitParticipant,
-  CommitSigningInput,
-  CreateBranchInput,
-  CreateCommitInput,
-  CreateRepositoryOptions,
-  CreateSnapshotInput,
-  GraphEdge,
-  HumanIdentity,
-  JsonObject,
-  RepositoryManifest,
+  CaptureInput,
+  CommitInput,
+  MergeInput,
+  RestoreInput,
+  InitializeInput,
+  OpenInput,
+  BundleResult,
+  ExportBundleInput,
+  ImportBundleInput,
+  MergeResult,
   RestoreResult,
-  Snapshot,
-  ValidationIssue,
-  ValidationResult,
-} from "./types.js";
+} from "./enginespec/core.js";

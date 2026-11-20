@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { afterEach, describe, expect, it } from "vitest";
-import { AISpecEngine } from "@enginespec/engine";
+import { AISpecEngine } from "@enginespec/engine/aispec-v0";
 
 const cliEntry = path.resolve(import.meta.dirname, "../dist/cli/index.js");
 

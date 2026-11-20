@@ -3,15 +3,14 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
-  AISpecEngine,
   EngineSpecEngine,
   EngineSpecError,
   LocalSignatureProvider,
   canonicalJson,
   generateEngineSpecKeyPair,
-  migrateAISpecV0,
   parseObjectId,
 } from "../src/index.js";
+import { AISpecEngine, migrateAISpecV0 } from "../src/aispec-v0.js";
 
 describe("EngineSpec v2", () => {
   it("produces stable canonical IDs and rejects invalid IDs", () => {

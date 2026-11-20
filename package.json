@@ -16,6 +16,10 @@
     ".": {
       "types": "./dist/src/index.d.ts",
       "import": "./dist/src/index.js"
+    },
+    "./aispec-v0": {
+      "types": "./dist/src/aispec-v0.d.ts",
+      "import": "./dist/src/aispec-v0.js"
     }
   },
   "scripts": {

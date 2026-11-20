@@ -45,12 +45,21 @@ describe("published package consumer", () => {
       `
         import assert from "node:assert/strict";
         import {
+          EngineSpec,
+          EngineSpecEngine,
+        } from "@enginespec/engine";
+        import assertUniversal from "node:assert/strict";
+        import {
           AISpecEngine,
           persistCommitAndAdvanceBranch,
           reconstructVersionedState,
           validateAgainstSchema,
-        } from "@enginespec/engine";
+        } from "@enginespec/engine/aispec-v0";
         import path from "node:path";
+
+        const universal = await import("@enginespec/engine");
+        assertUniversal.equal("AISpecEngine" in universal, false);
+        assertUniversal.equal("migrateAISpecV0" in universal, false);
 
         const writes = [];
         persistCommitAndAdvanceBranch(
@@ -80,6 +89,7 @@ describe("published package consumer", () => {
         assert.equal(state.get("entity")?.value, 1);
 
         const root = path.join(process.cwd(), "repository");
+        assert.equal(EngineSpec, EngineSpecEngine);
         const engine = AISpecEngine.create(root, { name: "Installed consumer" });
         const node = engine.addNode({ id: "consumer-node" });
         const snapshot = engine.createSnapshot({
