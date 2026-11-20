@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { existsSync, lstatSync, readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
-import { AISpecEngine } from "@iaspec/engine";
+import { AISpecEngine } from "@enginespec/engine";
 
 interface ParsedArguments {
   flags: Set<string>;

@@ -33,7 +33,7 @@ describe("published package consumer", () => {
     const packageDirectory = path.join(
       consumerRoot,
       "node_modules",
-      "@iaspec",
+      "@enginespec",
       "engine",
     );
     await mkdir(path.dirname(packageDirectory), { recursive: true });
@@ -49,7 +49,7 @@ describe("published package consumer", () => {
           persistCommitAndAdvanceBranch,
           reconstructVersionedState,
           validateAgainstSchema,
-        } from "@iaspec/engine";
+        } from "@enginespec/engine";
         import path from "node:path";
 
         const writes = [];

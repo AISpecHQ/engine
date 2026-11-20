@@ -19,6 +19,7 @@ export {
   type VersionedStateReader,
 } from "./versioning/state.js";
 export { EngineSpecEngine } from "./enginespec/core.js";
+export { EngineSpecEngine as EngineSpec } from "./enginespec/core.js";
 export { migrateAISpecV0 } from "./enginespec/compatibility.js";
 export { EngineSpecError } from "./enginespec/errors.js";
 export { LocalContentStore } from "./enginespec/cas.js";

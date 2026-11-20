@@ -33,7 +33,9 @@ const DATA_DIRECTORIES = [
 ] as const;
 
 // Windows may transiently deny replacement while another process scans the destination.
-const WINDOWS_RENAME_RETRY_DELAYS_MS = [10, 25, 50, 100, 200] as const;
+const WINDOWS_RENAME_RETRY_DELAYS_MS = [
+  10, 25, 50, 100, 200, 400, 800, 1_000,
+] as const;
 const RENAME_WAIT_BUFFER = new Int32Array(new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT));
 const internalRemovers = new WeakMap<RepositoryStorage, (relativePath: string) => void>();
 

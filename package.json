@@ -1,7 +1,7 @@
 {
-  "name": "@iaspec/engine",
-  "version": "0.1.0",
-  "description": "Reference filesystem engine for AISpec repositories",
+  "name": "@enginespec/engine",
+  "version": "0.2.0",
+  "description": "Universal local-first engine for versioning, integrity and provenance",
   "license": "Apache-2.0",
   "type": "module",
   "main": "dist/src/index.js",
